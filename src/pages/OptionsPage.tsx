@@ -1,548 +1,135 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, ChevronUp, Clock } from 'lucide-react';
-import { RiAlarmFill } from 'react-icons/ri';
-import { MdOutlineDriveFileRenameOutline, MdDelete } from 'react-icons/md';
-import { IoMdBusiness } from 'react-icons/io';
-import { FaMapLocationDot, FaTreeCity } from 'react-icons/fa6';
-import { BiWorld, BiSolidBank } from 'react-icons/bi';
-import { MdOutlineEmail } from 'react-icons/md';
-import { HiColorSwatch } from 'react-icons/hi';
-import { BsCurrencyExchange, BsFillInfoCircleFill, BsCalendarDateFill } from 'react-icons/bs';
-import { FaUserGear, FaUserPlus } from 'react-icons/fa6';
-import { FaPhoneAlt, FaUpload } from 'react-icons/fa';
-import { useAuth } from '../hooks/useAuth';
-import { supabase } from '../lib/supabase';
-import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ThemeToggle } from '../components/ui/ThemeToggle';
+import { useAuth } from '../hooks/useAuth';
+import { useBusinessSettings } from '../hooks/useBusinessSettings';
+import { supabase } from '../lib/supabase';
+import { useThemeStore } from '../stores/themeStore';
 import ColorPicker from '../components/ui/ColorPicker';
-
-interface Employee {
-  id: string;
-  email: string;
-  full_name: string;
-  role: 'admin' | 'cashier' | 'chef';
-  is_active: boolean;
-  created_at: string;
-}
+import toast from 'react-hot-toast';
+import { 
+  Building2, 
+  User, 
+  Palette, 
+  Globe, 
+  Clock, 
+  DollarSign,
+  Save,
+  Upload,
+  Camera
+} from 'lucide-react';
 
 const OptionsPage: React.FC = () => {
   const { user } = useAuth();
-  const [isBusinessInfoOpen, setIsBusinessInfoOpen] = useState(false);
-  const [hasBusinessInfoChanged, setHasBusinessInfoChanged] = useState(false);
-  const [hasRegionalFormatChanged, setHasRegionalFormatChanged] = useState(false);
+  const { settings } = useBusinessSettings();
+  const { theme, setTheme } = useThemeStore();
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [activeTab, setActiveTab] = useState('business');
   
-  // Business info states
-  const [businessName, setBusinessName] = useState('');
-  const [businessType, setBusinessType] = useState('');
-  const [businessLogo, setBusinessLogo] = useState('');
-  const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [address, setAddress] = useState('');
-  const [city, setCity] = useState('');
-  const [country, setCountry] = useState('');
-  const [bankAccount, setBankAccount] = useState('');
-  const [email, setEmail] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [phoneNumberPrefix, setPhoneNumberPrefix] = useState('');
-  
-  // Employee config states
-  const [isEmployeeConfigOpen, setIsEmployeeConfigOpen] = useState(false);
-  const [employeeName, setEmployeeName] = useState<string>('');
-  const [employeeRole, setEmployeeRole] = useState<string>('');
-  const [employeeEmail, setEmployeeEmail] = useState<string>('');
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [loadingEmployees, setLoadingEmployees] = useState(false);
-  const [savingEmployee, setSavingEmployee] = useState(false);
+  // Business settings state
+  const [businessData, setBusinessData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    address: '',
+    city: '',
+    country: '',
+    logo_url: '',
+    primary_color: '#0d9488',
+    currency: 'HNL',
+    language: 'es',
+    date_format: 'DD/MM/YYYY',
+    time_format: 'HH:mm',
+    theme: 'light',
+    notification_type: 'sound'
+  });
 
-  // Regional format states
-  const [isRegionalFormatOpen, setIsRegionalFormatOpen] = useState(false);
-  const saveRegionalFormatData = async () => {
-    if (!user?.business_id) {
-      toast.error('No se encontró información del negocio');
-      return;
-    }
+  // User profile state
+  const [userProfile, setUserProfile] = useState({
+    full_name: '',
+    email: '',
+    avatar_url: ''
+  });
 
-    setSaving(true);
-    try {
-      const updateData = {
-        date_format: dateFormat || null,
-        time_format: timeFormat || null,
-        currency_format: currencyFormat || null,
-      };
-
-      const { error } = await supabase
-        .from('businesses')
-        .update(updateData)
-        .eq('id', user.business_id);
-
-      if (error) {
-        console.error('Error saving regional format data:', error);
-        toast.error('Error al guardar los datos de formato regional');
-        return;
-      }
-
-      toast.success('Datos de formato regional guardados correctamente');
-      setHasRegionalFormatChanged(false);
-    } catch (error) {
-      console.error('Error saving regional format data:', error);
-      toast.error('Error al guardar los datos de formato regional');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Customize App states
-  const [isCustomizeAppOpen, setIsCustomizeAppOpen] = useState(false);
-  const [isRecordatoriosOpen, setIsRecordatoriosOpen] = useState(false);
-  const [eventName, setEventName] = useState('');
-  const [eventDate, setEventDate] = useState('');
-  const [reminders, setReminders] = useState<{ name: string; date: string }[]>([]);
-
-  const handleDeleteReminder = (indexToDelete: number) => {
-    setReminders(currentReminders => currentReminders.filter((_, index) => index !== indexToDelete));
-  };
-  const [appThemeColor, setAppThemeColor] = useState<string>('#000000');
-  const [notificationType, setNotificationType] = useState('');
-  const [voiceType, setVoiceType] = useState('');
-
-  const toggleCustomizeApp = () => {
-    setIsCustomizeAppOpen(!isCustomizeAppOpen);
-  };
-
-  const toggleRecordatorios = () => {
-    setIsRecordatoriosOpen(!isRecordatoriosOpen);
-  };
-
-  const handleAppThemeColorChange = (color: string) => {
-    setAppThemeColor(color);
-    setHasBusinessInfoChanged(true);
-  };
-  const [dateFormat, setDateFormat] = useState<string>('');
-  const [timeFormat, setTimeFormat] = useState<string>('');
-  const [currencyFormat, setCurrencyFormat] = useState<string>('');
-
-  const countryPrefixes: { [key: string]: string } = {
-    "Canadá": "+1",
-    "Estados Unidos": "+1",
-    "México": "+52",
-    "Belice": "+501",
-    "Costa Rica": "+506",
-    "El Salvador": "+503",
-    "Guatemala": "+502",
-    "Honduras": "+504",
-    "Nicaragua": "+505",
-    "Panamá": "+507",
-    "Argentina": "+54",
-    "Bolivia": "+591",
-    "Brasil": "+55",
-    "Chile": "+56",
-    "Colombia": "+57",
-    "Ecuador": "+593",
-    "Paraguay": "+595",
-    "Perú": "+51",
-    "Uruguay": "+598",
-    "Venezuela": "+58",
-  };
-
-  const countryCurrencies: { [key: string]: { symbol: string; name: string; region: string }[] } = {
-    "Canadá": [{ symbol: "CA$", name: "Dólar Canadiense", region: "Norteamérica" }],
-    "Estados Unidos": [{ symbol: "US$", name: "Dólar Estadounidense", region: "Norteamérica" }],
-    "México": [{ symbol: "MX$", name: "Peso Mexicano", region: "Norteamérica" }],
-    "Belice": [{ symbol: "BZ$", name: "Dólar Beliceño", region: "Centroamérica" }],
-    "Costa Rica": [{ symbol: "₡", name: "Colón Costarricense", region: "Centroamérica" }],
-    "El Salvador": [{ symbol: "$", name: "Dólar Estadounidense", region: "Centroamérica" }],
-    "Guatemala": [{ symbol: "Q", name: "Quetzal Guatemalteco", region: "Centroamérica" }],
-    "Honduras": [{ symbol: "L", name: "Lempira Hondureña", region: "Centroamérica" }],
-    "Nicaragua": [{ symbol: "C$", name: "Córdoba Nicaragüense", region: "Centroamérica" }],
-    "Panamá": [{ symbol: "B/.", name: "Balboa Panameño", region: "Centroamérica" }],
-    "Argentina": [{ symbol: "$", name: "Peso Argentino", region: "Sudamérica" }],
-    "Bolivia": [{ symbol: "Bs.", name: "Boliviano", region: "Sudamérica" }],
-    "Brasil": [{ symbol: "R$", name: "Real Brasileño", region: "Sudamérica" }],
-    "Chile": [{ symbol: "$", name: "Peso Chileno", region: "Sudamérica" }],
-    "Colombia": [{ symbol: "$", name: "Peso Colombiano", region: "Sudamérica" }],
-    "Ecuador": [{ symbol: "$", name: "Dólar Estadounidense", region: "Sudamérica" }],
-    "Paraguay": [{ symbol: "₲", name: "Guaraní Paraguayo", region: "Sudamérica" }],
-    "Perú": [{ symbol: "S/.", name: "Sol Peruano", region: "Sudamérica" }],
-    "Uruguay": [{ symbol: "$", name: "Peso Uruguayo", region: "Sudamérica" }],
-    "Venezuela": [{ symbol: "Bs.S", name: "Bolívar Soberano", region: "Sudamérica" }],
-  };
-
-  // Load business data when component mounts
   useEffect(() => {
-    if (user?.business_id) {
-      loadBusinessData();
-      loadEmployees();
+    if (user?.business) {
+      setBusinessData({
+        name: user.business.name || '',
+        email: user.business.email || '',
+        phone: user.business.phone || '',
+        address: user.business.address || '',
+        city: user.business.city || '',
+        country: user.business.country || '',
+        logo_url: user.business.logo_url || '',
+        primary_color: user.business.primary_color || '#0d9488',
+        currency: user.business.currency || 'HNL',
+        language: user.business.language || 'es',
+        date_format: user.business.date_format || 'DD/MM/YYYY',
+        time_format: user.business.time_format || 'HH:mm',
+        theme: user.business.theme || 'light',
+        notification_type: user.business.notification_type || 'sound'
+      });
     }
-  }, [user?.business_id]);
 
-  const loadBusinessData = async () => {
+    if (user) {
+      setUserProfile({
+        full_name: user.full_name || '',
+        email: user.email || '',
+        avatar_url: user.avatar_url || ''
+      });
+    }
+  }, [user]);
+
+  const handleBusinessUpdate = async () => {
     if (!user?.business_id) return;
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('businesses')
-        .select('*')
-        .eq('id', user.business_id)
-        .single();
+        .update(businessData)
+        .eq('id', user.business_id);
 
-      if (error) {
-        console.error('Error loading business data:', error);
-        toast.error('Error al cargar los datos del negocio');
-        return;
-      }
+      if (error) throw error;
 
-      if (data) {
-        setBusinessName(data.name || '');
-        setEmail(data.email || '');
-        setAddress(data.address || '');
-        setCity(data.city || '');
-        setCountry(data.country || '');
-        setBankAccount(data.bank_account || '');
-        setBusinessLogo(data.logo_url || '');
-        setAppThemeColor(data.primary_color || '#000000');
-        setNotificationType(data.notification_type || '');
-        setVoiceType(data.voice_type || '');
-        setDateFormat(data.date_format || '');
-        setTimeFormat(data.time_format || '');
-        setCurrencyFormat(data.currency || '');
-        setHasRegionalFormatChanged(false);
-        
-        // Handle phone number - extract prefix and number
-        if (data.phone) {
-          const phoneStr = data.phone;
-          // Find matching prefix
-          const matchingCountry = Object.entries(countryPrefixes).find(([_, prefix]) => 
-            phoneStr.startsWith(prefix)
-          );
-          
-          if (matchingCountry) {
-            const [countryName, prefix] = matchingCountry;
-            setPhoneNumberPrefix(prefix);
-            setPhoneNumber(phoneStr.substring(prefix.length));
-            if (!country) setCountry(countryName);
-          } else {
-            setPhoneNumber(phoneStr);
-          }
-        }
-        
-        // Set prefix based on country if not already set
-        if (data.country && countryPrefixes[data.country] && !phoneNumberPrefix) {
-          setPhoneNumberPrefix(countryPrefixes[data.country]);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading business data:', error);
-      toast.error('Error al cargar los datos del negocio');
+      toast.success('Configuración del negocio actualizada');
+    } catch (error: any) {
+      toast.error('Error al actualizar: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const loadEmployees = async () => {
-    if (!user?.business_id) return;
+  const handleUserUpdate = async () => {
+    if (!user?.id) return;
 
-    setLoadingEmployees(true);
+    setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('users')
-        .select('id, email, full_name, role, is_active, created_at')
-        .eq('business_id', user.business_id)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error loading employees:', error);
-        toast.error('Error al cargar los empleados');
-        return;
-      }
-
-      setEmployees(data || []);
-    } catch (error) {
-      console.error('Error loading employees:', error);
-      toast.error('Error al cargar los empleados');
-    } finally {
-      setLoadingEmployees(false);
-    }
-  };
-
-  const handleAddEmployee = async () => {
-    if (!employeeName.trim() || !employeeRole || !employeeEmail.trim()) {
-      toast.error('Por favor completa todos los campos');
-      return;
-    }
-
-    if (!user?.business_id) {
-      toast.error('No se encontró información del negocio');
-      return;
-    }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(employeeEmail)) {
-      toast.error('Por favor ingresa un email válido');
-      return;
-    }
-
-    setSavingEmployee(true);
-    try {
-      // Check if email already exists
-      const { data: existingUser, error: checkError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('email', employeeEmail.trim())
-        .single();
-
-      if (checkError && checkError.code !== 'PGRST116') {
-        console.error('Error checking existing user:', checkError);
-        toast.error('Error al verificar el usuario');
-        return;
-      }
-
-      if (existingUser) {
-        toast.error('Ya existe un usuario con este email');
-        return;
-      }
-
-      // Create auth user first
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: employeeEmail.trim(),
-        password: 'TempPassword123!', // Temporary password - user should change it
-        options: {
-          data: {
-            full_name: employeeName.trim(),
-          }
-        }
-      });
-
-      if (authError) {
-        console.error('Error creating auth user:', authError);
-        toast.error('Error al crear el usuario: ' + authError.message);
-        return;
-      }
-
-      if (!authData.user) {
-        toast.error('No se pudo crear el usuario');
-        return;
-      }
-
-      // Create user profile
-      const { data: newUser, error: userError } = await supabase
-        .from('users')
-        .insert({
-          id: authData.user.id,
-          email: employeeEmail.trim(),
-          full_name: employeeName.trim(),
-          role: employeeRole as 'admin' | 'cashier' | 'chef',
-          business_id: user.business_id,
-          is_active: true,
+        .update({
+          full_name: userProfile.full_name,
+          avatar_url: userProfile.avatar_url
         })
-        .select('id, email, full_name, role, is_active, created_at')
-        .single();
+        .eq('id', user.id);
 
-      if (userError) {
-        console.error('Error creating user profile:', userError);
-        toast.error('Error al crear el perfil del usuario');
-        return;
-      }
+      if (error) throw error;
 
-      // Add to local state
-      setEmployees(prev => [newUser, ...prev]);
-      
-      // Clear form
-      setEmployeeName('');
-      setEmployeeRole('');
-      setEmployeeEmail('');
-      
-      toast.success('Empleado agregado correctamente');
-    } catch (error) {
-      console.error('Error adding employee:', error);
-      toast.error('Error al agregar el empleado');
+      toast.success('Perfil actualizado');
+    } catch (error: any) {
+      toast.error('Error al actualizar perfil: ' + error.message);
     } finally {
-      setSavingEmployee(false);
+      setLoading(false);
     }
   };
 
-  const handleDeleteEmployee = async (employeeId: string) => {
-    if (!confirm('¿Estás seguro de que quieres eliminar este empleado?')) {
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from('users')
-        .update({ is_active: false })
-        .eq('id', employeeId);
-
-      if (error) {
-        console.error('Error deactivating employee:', error);
-        toast.error('Error al desactivar el empleado');
-        return;
-      }
-
-      // Update local state
-      setEmployees(prev => prev.filter(emp => emp.id !== employeeId));
-      toast.success('Empleado desactivado correctamente');
-    } catch (error) {
-      console.error('Error deleting employee:', error);
-      toast.error('Error al eliminar el empleado');
-    }
-  };
-
-  const uploadLogo = async (file: File): Promise<string | null> => {
-    if (!user?.business_id) return null;
-
-    try {
-      setUploadingLogo(true);
-      
-      // Create a unique filename
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${user.business_id}/logo.${fileExt}`;
-      
-      // Upload file to Supabase Storage
-      const { data, error } = await supabase.storage
-        .from('business-logos')
-        .upload(fileName, file, {
-          cacheControl: '3600',
-          upsert: true
-        });
-
-      if (error) {
-        console.error('Error uploading logo:', error);
-        toast.error('Error al subir el logo');
-        return null;
-      }
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('business-logos')
-        .getPublicUrl(fileName);
-
-      return publicUrl;
-    } catch (error) {
-      console.error('Error uploading logo:', error);
-      toast.error('Error al subir el logo');
-      return null;
-    } finally {
-      setUploadingLogo(false);
-    }
-  };
-
-  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      toast.error('Por favor selecciona un archivo de imagen válido');
-      return;
-    }
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('El archivo es muy grande. Máximo 5MB');
-      return;
-    }
-
-    setLogoFile(file);
-    setHasBusinessInfoChanged(true);
-  };
-
-  const saveBusinessData = async () => {
-    if (!user?.business_id) {
-      toast.error('No se encontró información del negocio');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      let logoUrl = businessLogo;
-
-      // Upload logo if a new file was selected
-      if (logoFile) {
-        const uploadedUrl = await uploadLogo(logoFile);
-        if (uploadedUrl) {
-          logoUrl = uploadedUrl;
-        }
-      }
-
-      // Combine phone prefix and number
-      const fullPhoneNumber = phoneNumberPrefix && phoneNumber 
-        ? `${phoneNumberPrefix}${phoneNumber}` 
-        : phoneNumber;
-
-      const updateData = {
-        name: businessName,
-        email: email,
-        address: address || null,
-        city: city || null,
-        country: country || null,
-        phone: fullPhoneNumber || null,
-        bank_account: bankAccount || null,
-        logo_url: logoUrl || null,
-        primary_color: appThemeColor || null,
-        notification_type: notificationType || null,
-      };
-
-      const { error } = await supabase
-        .from('businesses')
-        .update(updateData)
-        .eq('id', user.business_id);
-
-      if (error) {
-        console.error('Error saving business data:', error);
-        toast.error('Error al guardar los datos del negocio');
-        return;
-      }
-
-      setBusinessLogo(logoUrl);
-      setLogoFile(null);
-      toast.success('Datos del negocio guardados correctamente');
-      setHasBusinessInfoChanged(false);
-    } catch (error) {
-      console.error('Error saving business data:', error);
-      toast.error('Error al guardar los datos del negocio');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleFieldChange = (setter: (value: string) => void, setChanged?: (value: boolean) => void) => (value: string) => {
-    setter(value);
-    if (setChanged) {
-      setChanged(true);
-    } else {
-      setHasBusinessInfoChanged(true);
-    }
-  };
-
-  const toggleBusinessInfo = () => {
-    setIsBusinessInfoOpen(!isBusinessInfoOpen);
-  };
-
-  const toggleEmployeeConfig = () => {
-    setIsEmployeeConfigOpen(!isEmployeeConfigOpen);
-  };
-
-  const toggleRegionalFormat = () => {
-    setIsRegionalFormatOpen(!isRegionalFormatOpen);
-  };
-
-  const getRoleDisplayName = (role: string) => {
-    switch (role) {
-      case 'admin':
-        return 'Administrador';
-      case 'cashier':
-        return 'Cajero';
-      case 'chef':
-        return 'Cocinero';
-      default:
-        return role;
-    }
-  };
+  const tabs = [
+    { id: 'business', label: 'Negocio', icon: Building2 },
+    { id: 'profile', label: 'Perfil', icon: User },
+    { id: 'appearance', label: 'Apariencia', icon: Palette },
+    { id: 'localization', label: 'Localización', icon: Globe }
+  ];
 
   return (
     <div className="space-y-6 md:ml-32 pt-4 md:pt-0 md:-mt-10">
@@ -556,7 +143,7 @@ const OptionsPage: React.FC = () => {
               const capitalizedDay = day.charAt(0).toUpperCase() + day.slice(1);
               return [capitalizedDay, ...parts.slice(1)].join(',');
             }
-            return formattedDate; // Fallback if split fails
+            return formattedDate;
           })()}
         </h1>
         <div className="hidden md:block">
@@ -564,721 +151,372 @@ const OptionsPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow mb-4 mt-6">
-        <button
-          onClick={toggleBusinessInfo}
-          className="flex items-center justify-between w-full p-4 text-lg font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-t-lg"
-        >
-          <div className="flex items-center">
-            <BsFillInfoCircleFill className="h-5 w-5 mr-2" />
-            <span>Información del Negocio</span>
-          </div>
-          {isBusinessInfoOpen ? (
-            <ChevronUp className="h-5 w-5" />
-          ) : (
-            <ChevronDown className="h-5 w-5" />
-          )}
-        </button>
-        {isBusinessInfoOpen && (
-          <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-            {loading ? (
-              <div className="flex justify-center items-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-                <span className="ml-2 text-gray-600 dark:text-gray-400">Cargando datos...</span>
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 gap-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-
-                    <div>
-                      <label htmlFor="businessName" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Nombre del Negocio
-                      </label>
-                      <div className="relative mt-1">
-                        <MdOutlineDriveFileRenameOutline className="absolute left-1 top-1/2 transform -translate-y-1/2 text-gray-500" />
-                        <input 
-                          type="text" 
-                          id="businessName" 
-                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white pl-6 text-sm py-1" 
-                          value={businessName} 
-                          onChange={(e) => handleFieldChange(setBusinessName)(e.target.value)}
-                          placeholder="Nombre de tu negocio"
-                        />
-                      </div>
-                    </div>
-                    
-                  <div>
-                      <label htmlFor="businessType" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Tipo de Negocio
-                      </label>
-                      <div className="relative mt-1">
-                        <IoMdBusiness className="absolute left-1 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                        <input 
-                          type="text" 
-                          id="businessType" 
-                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white pl-6 text-sm py-1" 
-                          value={businessType} 
-                          onChange={(e) => handleFieldChange(setBusinessType)(e.target.value)}
-                          placeholder="Ej: Restaurante, Cafetería"
-                        />
-                      </div>
-                    </div>
-                    
-                  <div>
-                    <label htmlFor="businessLogo" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Logo del Negocio
-                    </label>
-                    <div className="mt-1 flex items-center space-x-2">
-                      {businessLogo && (
-                        <img 
-                          src={businessLogo} 
-                          alt="Logo del negocio" 
-                          className="h-10 w-10 object-cover rounded-md border border-gray-300"
-                        />
-                      )}
-                      <div className="flex-1">
-                        <label htmlFor="logoUpload" className="cursor-pointer inline-flex items-center px-3 py-1 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-600">
-                          <FaUpload className="h-3 w-3 mr-2" />
-                          {uploadingLogo ? 'Subiendo...' : 'Subir Logo'}
-                        </label>
-                        <input
-                          id="logoUpload"
-                          type="file"
-                          accept="image/*"
-                          onChange={handleLogoChange}
-                          className="hidden"
-                          disabled={uploadingLogo}
-                        />
-                      </div>
-                    </div>
-                    {logoFile && (
-                      <p className="mt-1 text-xs text-gray-500">
-                        Archivo seleccionado: {logoFile.name}
-                      </p>
-                    )}
-                  </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label htmlFor="address" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Dirección
-                    </label>
-                    <div className="relative mt-1">
-                      <FaMapLocationDot className="absolute left-1 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                      <input 
-                        type="text" 
-                        id="address" 
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white pl-6 text-sm py-1" 
-                        value={address} 
-                        onChange={(e) => handleFieldChange(setAddress)(e.target.value)}
-                        placeholder="Dirección completa"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label htmlFor="city" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Ciudad
-                    </label>
-                    <div className="relative mt-1">
-                      <FaTreeCity className="absolute left-1 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                      <input 
-                        type="text" 
-                        id="city" 
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white pl-6 text-sm py-1" 
-                        value={city} 
-                        onChange={(e) => handleFieldChange(setCity)(e.target.value)}
-                        placeholder="Ciudad"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label htmlFor="country" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      País
-                    </label>
-                    <div className="relative mt-1">
-                      <BiWorld className="absolute left-1 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                      <select 
-                        id="country" 
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white pl-5 text-sm py-1" 
-                        value={country} 
-                        onChange={(e) => {
-                          const selectedCountry = e.target.value;
-                          handleFieldChange(setCountry)(selectedCountry);
-                          setPhoneNumberPrefix(countryPrefixes[selectedCountry] || '');
-                        }}
-                      >
-                        <option value="">Seleccione un país</option>
-                        <optgroup label="Norteamérica">
-                          <option value="Canadá">Canadá</option>
-                          <option value="Estados Unidos">Estados Unidos</option>
-                          <option value="México">México</option>
-                        </optgroup>
-                        <optgroup label="Centroamérica">
-                          <option value="Belice">Belice</option>
-                          <option value="Costa Rica">Costa Rica</option>
-                          <option value="El Salvador">El Salvador</option>
-                          <option value="Guatemala">Guatemala</option>
-                          <option value="Honduras">Honduras</option>
-                          <option value="Nicaragua">Nicaragua</option>
-                          <option value="Panamá">Panamá</option>
-                        </optgroup>
-                        <optgroup label="Suramérica">
-                          <option value="Argentina">Argentina</option>
-                          <option value="Bolivia">Bolivia</option>
-                          <option value="Brasil">Brasil</option>
-                          <option value="Chile">Chile</option>
-                          <option value="Colombia">Colombia</option>
-                          <option value="Ecuador">Ecuador</option>
-                          <option value="Paraguay">Paraguay</option>
-                          <option value="Perú">Perú</option>
-                          <option value="Uruguay">Uruguay</option>
-                          <option value="Venezuela">Venezuela</option>
-                        </optgroup>
-                      </select>
-                    </div>
-                  </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label htmlFor="bankAccount" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Cuenta Bancaria
-                      </label>
-                      <div className="relative mt-1">
-                        <BiSolidBank className="absolute left-1 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                        <input 
-                          type="text" 
-                          id="bankAccount" 
-                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white pl-6 text-sm py-1" 
-                          value={bankAccount} 
-                          onChange={(e) => handleFieldChange(setBankAccount)(e.target.value)}
-                          placeholder="Número de cuenta"
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="sm:col-span-1">
-                      <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        E-mail
-                      </label>
-                      <div className="relative mt-1">
-                        <MdOutlineEmail className="absolute left-1 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                        <input 
-                          type="email" 
-                          id="email" 
-                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white pl-6 text-sm py-1" 
-                          value={email} 
-                          onChange={(e) => handleFieldChange(setEmail)(e.target.value)}
-                          placeholder="correo@ejemplo.com"
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="sm:col-span-1">
-                      <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Número Telefónico
-                      </label>
-                      <div className="relative mt-1 flex items-center">
-                        {phoneNumberPrefix && (
-                            <span className="text-gray-500 dark:text-gray-200 text-sm bg-gray-100 dark:bg-gray-700 px-1.5 py-1 rounded-md mr-0.5">
-                              {phoneNumberPrefix}
-                            </span>
-                          )}
-                          <div className="relative flex-1">
-                            <FaPhoneAlt className="absolute left-1 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                            <input 
-                              type="tel" 
-                              id="phoneNumber" 
-                              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white pl-6 text-sm py-1" 
-                              value={phoneNumber} 
-                              onChange={(e) => handleFieldChange(setPhoneNumber)(e.target.value)}
-                              placeholder="Ej: 9876-5432"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                </div>
-                
-                {hasBusinessInfoChanged && (
-                  <div className="flex justify-end mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <button
-                      onClick={saveBusinessData}
-                      disabled={saving || !businessName || !email}
-                      className="text-green-500 hover:text-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {saving ? 'Guardando...' : 'Guardar'}
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow mb-4">
-        <button
-          onClick={toggleEmployeeConfig}
-          className="flex items-center justify-between w-full p-4 text-lg font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-t-lg"
-        >
-          <div className="flex items-center">
-            <FaUserPlus className="h-5 w-5 mr-2" />
-            <span>Configurar Empleados</span>
-          </div>
-          {isEmployeeConfigOpen ? (
-            <ChevronUp className="h-5 w-5" />
-          ) : (
-            <ChevronDown className="h-5 w-5" />
-          )}
-        </button>
-        {isEmployeeConfigOpen && (
-          <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              <div>
-                <label htmlFor="employeeName" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Nombre del Usuario
-                </label>
-                <div className="relative mt-1">
-                  <MdOutlineDriveFileRenameOutline className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                  <input 
-                    type="text" 
-                    id="employeeName" 
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white pl-6 text-sm py-1" 
-                    value={employeeName} 
-                    onChange={(e) => setEmployeeName(e.target.value)}
-                    placeholder="Nombre completo"
-                    disabled={savingEmployee}
-                  />
-                </div>
-              </div>
-              <div>
-                <label htmlFor="employeeRole" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Rol
-                </label>
-                <div className="relative mt-1">
-                  <FaUserGear className="absolute left-1 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                  <select 
-                    id="employeeRole" 
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white pl-6 text-sm py-1" 
-                    value={employeeRole} 
-                    onChange={(e) => setEmployeeRole(e.target.value)}
-                    disabled={savingEmployee}
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Sidebar */}
+        <div className="lg:w-64">
+          <div className="card p-4">
+            <nav className="space-y-2">
+              {tabs.map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-left transition-colors ${
+                      activeTab === tab.id
+                        ? 'bg-primary-100 text-primary-800 dark:bg-primary-900/50 dark:text-primary-200'
+                        : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+                    }`}
                   >
-                    <option value="">Seleccione un rol</option>
-                    <option value="admin">Administrador</option>
-                    <option value="cashier">Cajero</option>
-                    <option value="chef">Cocinero</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label htmlFor="employeeEmail" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Email
-                </label>
-                <div className="relative mt-1">
-                  <MdOutlineEmail className="absolute left-1 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                  <input 
-                    type="email" 
-                    id="employeeEmail" 
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white pl-6 text-sm py-1" 
-                    value={employeeEmail} 
-                    onChange={(e) => setEmployeeEmail(e.target.value)}
-                    placeholder="correo@ejemplo.com"
-                    disabled={savingEmployee}
-                  />
-                </div>
-              </div>
-            </div>
-            
-            {/* Employee Table */}
-            <div className="mt-6">
-              <div className="flex items-center">
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Lista de Empleados</h3>
-                {(employeeName && employeeRole && employeeEmail) && (
-                  <button 
-                    onClick={handleAddEmployee}
-                    disabled={savingEmployee}
-                    className="text-green-500 hover:text-green-600 ml-auto disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {savingEmployee ? 'Agregando...' : 'Agregar'}
+                    <Icon className="h-5 w-5" />
+                    {tab.label}
                   </button>
-                )}
-              </div>
-              
-              {loadingEmployees ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
-                  <span className="ml-2 text-gray-600 dark:text-gray-400">Cargando empleados...</span>
-                </div>
-              ) : (
-                <div className="overflow-x-auto mt-2">
-                  <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                    <thead className="bg-gray-200 dark:bg-gray-700">
-                      <tr>
-                        <th scope="col" className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider sm:w-1/3">
-                          Nombre
-                        </th>
-                        <th scope="col" className="px-0 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider sm:w-1/6">
-                          Rol
-                        </th>
-                        <th scope="col" className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider sm:w-1/3">
-                          Email
-                        </th>
-                        <th scope="col" className="px-0 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider sm:w-1/12">
-                          Acciones
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                      {employees.map((employee) => (
-                        <tr key={employee.id}>
-                          <td className="px-1 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                            {employee.full_name}
-                          </td>
-                          <td className="px-0 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                            {getRoleDisplayName(employee.role)}
-                          </td>
-                          <td className="px-2 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                            {employee.email}
-                          </td>
-                          <td className="px-0 py-4 whitespace-nowrap text-left text-sm font-medium">
-                            <button
-                              onClick={() => handleDeleteEmployee(employee.id)}
-                              className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
-                              title="Desactivar empleado"
-                            >
-                              <MdDelete className="h-5 w-5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      {employees.length === 0 && (
-                        <tr>
-                          <td colSpan={4} className="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-300">
-                            No hay empleados registrados
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+                );
+              })}
+            </nav>
           </div>
-        )}
-      </div>
-
-      {/* Regional Format Accordion */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow mb-4">
-        <button
-          onClick={toggleRegionalFormat}
-          className="flex items-center justify-between w-full p-4 text-lg font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-t-lg"
-        >
-          <div className="flex items-center">
-            <BsCalendarDateFill className="h-5 w-5 mr-2" />
-            <span>Formato Regional</span>
-          </div>
-          {isRegionalFormatOpen ? (
-            <ChevronUp className="h-5 w-5" />
-          ) : (
-            <ChevronDown className="h-5 w-5" />
-          )}
-        </button>
-        {isRegionalFormatOpen && (
-          <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              <div className="flex flex-col">
-                <label htmlFor="dateFormat" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Formato de fecha
-                </label>
-                <div className="relative mt-1">
-                  <BsCalendarDateFill className="absolute left-1 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <select
-                    id="dateFormat"
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white pl-6 text-xs py-1"
-                    value={dateFormat}
-                    onChange={(e) => {
-                      const newValue = e.target.value;
-                      if (newValue !== dateFormat) {
-                        setDateFormat(newValue);
-                        setHasRegionalFormatChanged(true);
-                      }
-                    }}
-                  >
-                    <option value="">Tipo de Fecha</option>
-                    <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-                    <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-                    <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex flex-col">
-                <label htmlFor="timeFormat" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Formato de hora
-                </label>
-                <div className="relative mt-1">
-                  <Clock className="absolute left-1 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <select
-                    id="timeFormat"
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white pl-6 text-xs py-1"
-                    value={timeFormat}
-                    onChange={(e) => {
-                      const newValue = e.target.value;
-                      if (newValue !== timeFormat) {
-                        setTimeFormat(newValue);
-                        setHasRegionalFormatChanged(true);
-                      }
-                    }}
-                  >
-                    <option value="">Tpo de Hora</option>
-                    <option value="HH:mm">HH:mm (24h)</option>
-                    <option value="hh:mm A">hh:mm AM/PM (12h)</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex flex-col">
-                <label htmlFor="currencyFormat" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Moneda de cobro
-                </label>
-                <div className="relative mt-1">
-                  <BsCurrencyExchange className="absolute left-1 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <select 
-                          id="currencyFormat" 
-                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white pl-5 text-xs py-1" 
-                          value={currencyFormat} 
-                          onChange={(e) => {
-                            const newValue = e.target.value;
-                            if (newValue !== currencyFormat) {
-                              setCurrencyFormat(newValue);
-                              setHasRegionalFormatChanged(true);
-                            }
-                          }}
-                        >
-                          <option value="">Tipo de Moneda</option>
-                          {Object.entries(countryCurrencies).reduce((acc, [countryName, currencies]) => {
-                              const region = currencies[0]?.region; // Assuming all currencies for a country have the same region
-                              if (region) {
-                                if (!acc[region]) {
-                                  acc[region] = [];
-                                }
-                                acc[region].push(...currencies);
-                              }
-                              return acc;
-                            }, {} as Record<string, { symbol: string; name: string; region: string }[]>)
-                            ? Object.entries(Object.entries(countryCurrencies).reduce((acc, [countryName, currencies]) => {
-                                const region = currencies[0]?.region; // Assuming all currencies for a country have the same region
-                                if (region) {
-                                  if (!acc[region]) {
-                                    acc[region] = [];
-                                  }
-                                  acc[region].push(...currencies);
-                                }
-                                return acc;
-                              }, {} as Record<string, { symbol: string; name: string; region: string }[]>)).map(([region, currencies]) => (
-                                <optgroup key={region} label={region}>
-                                  {currencies.map((currency, index) => (
-                                    <option key={index} value={currency.symbol}>
-                                      {`${currency.symbol} (${currency.name})`}
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              ))
-                            : null}
-                        </select>
-                </div>
-              </div>
-            </div>
-            {hasRegionalFormatChanged && (
-              <div className="flex justify-end mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <button
-                  onClick={saveRegionalFormatData}
-                  disabled={saving}
-                  className="text-green-500 hover:text-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {saving ? 'Guardando...' : 'Guardar'}
-                </button>
-              </div>
-            )}
-          </div>)}
         </div>
 
-        {/* Recordatorios Accordion */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow mb-4">
-          <button
-            onClick={toggleRecordatorios}
-            className="flex items-center justify-between w-full p-4 text-lg font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-t-lg"
-          >
-            <div className="flex items-center">
-              <RiAlarmFill className="h-5 w-5 mr-2" />
-              <span>Configurar Recordatorios</span>
-            </div>
-            {isRecordatoriosOpen ? (
-              <ChevronUp className="h-5 w-5" />
-            ) : (
-              <ChevronDown className="h-5 w-5" />
-            )}
-          </button>
-          {isRecordatoriosOpen && (
-            <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="eventName" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Evento
-                  </label>
-                  <input
-                    type="text"
-                    id="eventName"
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white pl-3 text-sm py-1"
-                    value={eventName}
-                    onChange={(e) => setEventName(e.target.value)}
-                    placeholder="Nombre del evento"
-                  />
+        {/* Main Content */}
+        <div className="flex-1">
+          <div className="card">
+            {activeTab === 'business' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold">Información del Negocio</h2>
+                  <button
+                    onClick={handleBusinessUpdate}
+                    disabled={loading}
+                    className="btn-primary flex items-center gap-2"
+                  >
+                    <Save className="h-4 w-4" />
+                    {loading ? 'Guardando...' : 'Guardar'}
+                  </button>
                 </div>
-                <div>
-                  <label htmlFor="eventDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Fecha
-                  </label>
-                  <input
-                    type="date"
-                    id="eventDate"
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white pl-3 text-sm py-1"
-                    value={eventDate}
-                    onChange={(e) => setEventDate(e.target.value)}
-                  />
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="label">Nombre del Negocio</label>
+                    <input
+                      type="text"
+                      className="input w-full"
+                      value={businessData.name}
+                      onChange={(e) => setBusinessData({ ...businessData, name: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="label">Correo Electrónico</label>
+                    <input
+                      type="email"
+                      className="input w-full"
+                      value={businessData.email}
+                      onChange={(e) => setBusinessData({ ...businessData, email: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="label">Teléfono</label>
+                    <input
+                      type="text"
+                      className="input w-full"
+                      value={businessData.phone}
+                      onChange={(e) => setBusinessData({ ...businessData, phone: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="label">Dirección</label>
+                    <input
+                      type="text"
+                      className="input w-full"
+                      value={businessData.address}
+                      onChange={(e) => setBusinessData({ ...businessData, address: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="label">Ciudad</label>
+                    <input
+                      type="text"
+                      className="input w-full"
+                      value={businessData.city}
+                      onChange={(e) => setBusinessData({ ...businessData, city: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="label">País</label>
+                    <input
+                      type="text"
+                      className="input w-full"
+                      value={businessData.country}
+                      onChange={(e) => setBusinessData({ ...businessData, country: e.target.value })}
+                    />
+                  </div>
                 </div>
-              </div>
-              {/* Tabla y botón de Recordatorios movidos aquí */}
-              <div className="mt-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Eventos agregados</h3>
-                  {eventName && eventDate && (
-                    <button
-                      onClick={() => {
-                        setReminders([...reminders, { name: eventName, date: eventDate }]);
-                        setEventName('');
-                        setEventDate('');
-                      }}
-                      className="text-green-600 focus:outline-none"
-                      style={{ textDecoration: 'none' }}
-                    >
-                      Agregar
+
+                <div>
+                  <label className="label">Logo del Negocio</label>
+                  <div className="flex items-center gap-4">
+                    {businessData.logo_url && (
+                      <img
+                        src={businessData.logo_url}
+                        alt="Logo"
+                        className="h-16 w-16 object-cover rounded-md border"
+                      />
+                    )}
+                    <button className="btn-outline flex items-center gap-2">
+                      <Upload className="h-4 w-4" />
+                      Subir Logo
                     </button>
-                  )}
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                    <thead className="bg-gray-200 dark:bg-gray-700">
-                      <tr>
-                        <th scope="col" className="px-5 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider sm:w-1/3">
-                          Evento
-                        </th>
-                        <th scope="col" className="px-6 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                          Fecha
-                        </th>
-                        <th scope="col" className="px-1 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                          Acciones
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                      {reminders.map((reminder, index) => (
-                        <tr key={index}>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                            {reminder.name}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                            {new Date(reminder.date + 'T00:00:00').toLocaleDateString(navigator.language, { year: 'numeric', month: 'long', day: 'numeric' })}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <button
-                              onClick={() => handleDeleteReminder(index)}
-                              className="text-red-600 hover:text-red-900"
-                            >
-                              <MdDelete className="h-5 w-5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-
-                    </tbody>
-                  </table>
+                  </div>
                 </div>
               </div>
-
-            </div>
-          )}
-        </div>
-
-        {/* Customize App Section */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow mb-4">
-          <button
-          onClick={toggleCustomizeApp}
-          className="flex items-center justify-between w-full p-4 text-lg font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-t-lg"
-        >
-          <div className="flex items-center">
-            <HiColorSwatch className="h-5 w-5 mr-2" />
-            <span>Personalizar App</span>
-          </div>
-            {isCustomizeAppOpen ? (
-              <ChevronUp className="text-gray-600 dark:text-gray-400" />
-            ) : (
-              <ChevronDown className="text-gray-600 dark:text-gray-400" />
             )}
-          </button>
-          {isCustomizeAppOpen && (
-            <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                {/* App Theme Color Picker */}
-                <div className="w-full">
-                  <label htmlFor="appThemeColor" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Color del sidebar
-                  </label>
-                  <ColorPicker color={appThemeColor} onChange={handleAppThemeColorChange} />
+
+            {activeTab === 'profile' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold">Perfil de Usuario</h2>
+                  <button
+                    onClick={handleUserUpdate}
+                    disabled={loading}
+                    className="btn-primary flex items-center gap-2"
+                  >
+                    <Save className="h-4 w-4" />
+                    {loading ? 'Guardando...' : 'Guardar'}
+                  </button>
                 </div>
 
-                {/* Notification Type */} 
-                <div>
-                  <label htmlFor="notificationType" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Tipo de Notificaciones
-                  </label>
-                  <select
-                    id="notificationType"
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white pl-3 text-xs py-1"
-                    value={notificationType}
-                    onChange={(e) => setNotificationType(e.target.value)}
-                  >
-                    <option value="">Seleccionar Tipo</option>
-                    <option value="email">Sonidos</option>
-                    <option value="sms">Voz</option>
-                  </select>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="label">Nombre Completo</label>
+                    <input
+                      type="text"
+                      className="input w-full"
+                      value={userProfile.full_name}
+                      onChange={(e) => setUserProfile({ ...userProfile, full_name: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="label">Correo Electrónico</label>
+                    <input
+                      type="email"
+                      className="input w-full"
+                      value={userProfile.email}
+                      disabled
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      El correo no se puede cambiar desde aquí
+                    </p>
+                  </div>
                 </div>
 
-                {/* Voice Type */}
                 <div>
-                  <label htmlFor="voiceType" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Tipo de Voz
-                  </label>
-                  <select
-                    id="voiceType"
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white pl-3 text-xs py-1"
-                    value={voiceType}
-                    onChange={(e) => setVoiceType(e.target.value)}
-                  >
-                    <option value="">Seleccionar Tipo</option>
-                    <option value="male">Masculina</option>
-                    <option value="female">Femenina</option>
-                  </select>
+                  <label className="label">Foto de Perfil</label>
+                  <div className="flex items-center gap-4">
+                    {userProfile.avatar_url ? (
+                      <img
+                        src={userProfile.avatar_url}
+                        alt="Avatar"
+                        className="h-16 w-16 object-cover rounded-full border"
+                      />
+                    ) : (
+                      <div className="h-16 w-16 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center">
+                        <Camera className="h-6 w-6 text-gray-400" />
+                      </div>
+                    )}
+                    <button className="btn-outline flex items-center gap-2">
+                      <Upload className="h-4 w-4" />
+                      Subir Foto
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-md">
+                  <h3 className="font-medium mb-2">Información del Rol</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Rol actual: <span className="font-medium capitalize">{user?.role}</span>
+                  </p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Para cambiar roles, contacta a un administrador.
+                  </p>
                 </div>
               </div>
+            )}
 
-            </div>
-          )}
+            {activeTab === 'appearance' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold">Apariencia</h2>
+                  <button
+                    onClick={handleBusinessUpdate}
+                    disabled={loading}
+                    className="btn-primary flex items-center gap-2"
+                  >
+                    <Save className="h-4 w-4" />
+                    {loading ? 'Guardando...' : 'Guardar'}
+                  </button>
+                </div>
+
+                <div className="space-y-6">
+                  <div>
+                    <label className="label">Tema</label>
+                    <div className="flex gap-4">
+                      <button
+                        onClick={() => {
+                          setTheme('light');
+                          setBusinessData({ ...businessData, theme: 'light' });
+                        }}
+                        className={`p-4 border rounded-md flex items-center gap-2 ${
+                          theme === 'light' ? 'border-primary-500 bg-primary-50' : 'border-gray-300'
+                        }`}
+                      >
+                        <div className="w-4 h-4 bg-white border border-gray-300 rounded"></div>
+                        Claro
+                      </button>
+                      <button
+                        onClick={() => {
+                          setTheme('dark');
+                          setBusinessData({ ...businessData, theme: 'dark' });
+                        }}
+                        className={`p-4 border rounded-md flex items-center gap-2 ${
+                          theme === 'dark' ? 'border-primary-500 bg-primary-50' : 'border-gray-300'
+                        }`}
+                      >
+                        <div className="w-4 h-4 bg-gray-800 border border-gray-600 rounded"></div>
+                        Oscuro
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="label">Color Principal</label>
+                    <div className="flex items-center gap-4">
+                      <div
+                        className="w-12 h-12 rounded-md border"
+                        style={{ backgroundColor: businessData.primary_color }}
+                      ></div>
+                      <div className="w-64">
+                        <ColorPicker
+                          color={businessData.primary_color}
+                          onChange={(color) => setBusinessData({ ...businessData, primary_color: color })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="label">Tipo de Notificación</label>
+                    <select
+                      className="input w-full"
+                      value={businessData.notification_type}
+                      onChange={(e) => setBusinessData({ ...businessData, notification_type: e.target.value })}
+                    >
+                      <option value="sound">Sonido</option>
+                      <option value="visual">Visual</option>
+                      <option value="both">Ambos</option>
+                      <option value="none">Ninguno</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'localization' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold">Configuración Regional</h2>
+                  <button
+                    onClick={handleBusinessUpdate}
+                    disabled={loading}
+                    className="btn-primary flex items-center gap-2"
+                  >
+                    <Save className="h-4 w-4" />
+                    {loading ? 'Guardando...' : 'Guardar'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="label flex items-center gap-2">
+                      <DollarSign className="h-4 w-4" />
+                      Moneda
+                    </label>
+                    <select
+                      className="input w-full"
+                      value={businessData.currency}
+                      onChange={(e) => setBusinessData({ ...businessData, currency: e.target.value })}
+                    >
+                      <option value="HNL">Lempira (HNL)</option>
+                      <option value="USD">Dólar (USD)</option>
+                      <option value="EUR">Euro (EUR)</option>
+                      <option value="MXN">Peso Mexicano (MXN)</option>
+                      <option value="GTQ">Quetzal (GTQ)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="label flex items-center gap-2">
+                      <Globe className="h-4 w-4" />
+                      Idioma
+                    </label>
+                    <select
+                      className="input w-full"
+                      value={businessData.language}
+                      onChange={(e) => setBusinessData({ ...businessData, language: e.target.value })}
+                    >
+                      <option value="es">Español</option>
+                      <option value="en">English</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="label">Formato de Fecha</label>
+                    <select
+                      className="input w-full"
+                      value={businessData.date_format}
+                      onChange={(e) => setBusinessData({ ...businessData, date_format: e.target.value })}
+                    >
+                      <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                      <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                      <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="label flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      Formato de Hora
+                    </label>
+                    <select
+                      className="input w-full"
+                      value={businessData.time_format}
+                      onChange={(e) => setBusinessData({ ...businessData, time_format: e.target.value })}
+                    >
+                      <option value="HH:mm">24 horas (HH:mm)</option>
+                      <option value="hh:mm A">12 horas (hh:mm AM/PM)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-md">
+                  <h3 className="font-medium text-blue-800 dark:text-blue-200 mb-2">
+                    Vista Previa
+                  </h3>
+                  <div className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+                    <p>Fecha: {format(new Date(), businessData.date_format === 'DD/MM/YYYY' ? 'dd/MM/yyyy' : businessData.date_format === 'MM/DD/YYYY' ? 'MM/dd/yyyy' : 'yyyy-MM-dd')}</p>
+                    <p>Hora: {format(new Date(), businessData.time_format === 'HH:mm' ? 'HH:mm' : 'hh:mm a')}</p>
+                    <p>Moneda: {new Intl.NumberFormat('es-HN', { style: 'currency', currency: businessData.currency }).format(1234.56)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
+      </div>
     </div>
   );
 };
